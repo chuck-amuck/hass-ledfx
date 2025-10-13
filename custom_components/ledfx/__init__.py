@@ -73,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         :param with_sleep: bool
         """
 
-        await _updater.async_config_entry_first_refresh()
+        await _updater.async_refresh()
 
         if with_sleep:
             await asyncio.sleep(DEFAULT_SLEEP)
