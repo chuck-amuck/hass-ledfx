@@ -33,5 +33,8 @@ class EffectCategory(StrEnum):
     """EffectCategory enum"""
 
     NONE = "none"
-    DEFAULT = "default_presets"
-    CUSTOM = "custom_presets"
+    # Sent on the wire as the `category` field of PUT /api/virtuals/{id}/presets.
+    # LedFx 2.x (verified against 2.1.9) only accepts "ledfx_presets"/"user_presets";
+    # the old "default_presets"/"custom_presets" values are rejected.
+    DEFAULT = "ledfx_presets"
+    CUSTOM = "user_presets"
