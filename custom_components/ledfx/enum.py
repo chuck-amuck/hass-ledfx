@@ -27,6 +27,7 @@ class ActionType(StrEnum):
     DEFAULT = "default"
     SCENE = "scene"
     DEVICE = "device"
+    DEVICE_PRESET = "device_preset"
 
 
 class EffectCategory(StrEnum):

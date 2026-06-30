@@ -311,6 +311,93 @@ async def test_effect_property(hass: HomeAssistant) -> None:
             )
 
 
+@pytest.mark.asyncio
+async def test_device_preset(hass: HomeAssistant) -> None:
+    """Test per-device preset select.
+
+    :param hass: HomeAssistant
+    """
+
+    with patch("custom_components.ledfx.updater.LedFxClient") as mock_client:
+        await async_mock_client_2(mock_client)
+
+        def success_preset(
+            device_code: str,
+            category: str,
+            effect: str,
+            preset: str,
+            is_virtual: bool = False,
+        ) -> dict:
+            assert is_virtual
+            assert device_code == "wled"
+            assert category == "ledfx_presets"
+            assert effect == "magnitude"
+            assert preset == "cold-fire"
+
+            return json.loads(load_fixture("preset_data.json"))
+
+        def error_preset(
+            device_code: str,
+            category: str,
+            effect: str,
+            preset: str,
+            is_virtual: bool = False,
+        ) -> None:
+            raise LedFxRequestError
+
+        mock_client.return_value.preset = AsyncMock(
+            side_effect=MultipleSideEffect(success_preset, error_preset)
+        )
+
+        _, config_entry = await async_setup(hass)
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        updater: LedFxUpdater = hass.data[DOMAIN][config_entry.entry_id][UPDATER]
+
+        assert updater.last_update_success
+
+        unique_id: str = _generate_id("wled_preset", updater.ip)
+
+        state: State = hass.states.get(unique_id)
+        assert state is not None
+        assert state.name == "Preset"
+        assert state.attributes["icon"] == "mdi:playlist-star"
+        # Presets for the device's active effect (magnitude) only.
+        assert state.attributes["options"] == [
+            "cold-fire",
+            "jungle-cascade",
+            "lively",
+            "reset",
+            "rolling-rainbow",
+            "warm-bass",
+        ]
+
+        assert await hass.services.async_call(
+            SELECT_DOMAIN,
+            SERVICE_SELECT_OPTION,
+            {ATTR_ENTITY_ID: [unique_id], ATTR_OPTION: "cold-fire"},
+            blocking=True,
+            limit=None,
+        )
+
+        state = hass.states.get(unique_id)
+        assert state.state == "cold-fire"
+
+        # A failing preset request is swallowed and leaves the selection intact.
+        assert await hass.services.async_call(
+            SELECT_DOMAIN,
+            SERVICE_SELECT_OPTION,
+            {ATTR_ENTITY_ID: [unique_id], ATTR_OPTION: "lively"},
+            blocking=True,
+            limit=None,
+        )
+
+        state = hass.states.get(unique_id)
+        assert state.state == "cold-fire"
+
+
 def _generate_id(code: str, ip_address: str) -> str:
     """Generate unique id
 

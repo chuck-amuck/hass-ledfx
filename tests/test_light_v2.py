@@ -37,143 +37,38 @@ from tests.setup import MultipleSideEffect, async_mock_client_2, async_setup
 
 _LOGGER = logging.getLogger(__name__)
 
+# Presets are no longer mixed into the effect list; they are exposed via the
+# dedicated per-device "Preset" select. The effect list holds base effects only.
 EFFECT_LIST: Final = [
     "bands",
-    "bands - reset",
     "bands_matrix",
-    "bands_matrix - reset",
     "bar",
-    "bar - Rainbow-lr",
-    "bar - bouncing-blues",
-    "bar - passing-by",
-    "bar - plasma-cascade",
-    "bar - reset",
-    "bar - smooth-bounce",
-    "bar - reset",
     "blade_power_plus",
-    "blade_power_plus - ocean-bass",
-    "blade_power_plus - orange-hi-hat",
-    "blade_power_plus - reset",
     "block_reflections",
-    "block_reflections - reset",
     "blocks",
-    "blocks - reset",
     "crawler",
-    "crawler - reset",
     "energy",
-    "energy - clear-sky",
-    "energy - reset",
-    "energy - smooth-plasma",
-    "energy - smooth-rainbow",
-    "energy - snappy-blues",
     "energy2",
-    "energy2 - reset",
     "equalizer",
-    "equalizer - reset",
     "fade",
-    "fade - blues",
-    "fade - calm-reds",
-    "fade - rainbow-cycle",
-    "fade - red-to-blue",
-    "fade - reset",
-    "fade - sunset",
     "fire",
-    "fire - reset",
     "glitch",
-    "glitch - reset",
     "gradient",
-    "gradient - Rainbow-roll",
-    "gradient - breathing",
-    "gradient - falling-blues",
-    "gradient - reset",
-    "gradient - rolling-sunset",
-    "gradient - spectrum",
-    "gradient - twister",
-    "gradient - waves",
     "lava_lamp",
-    "lava_lamp - reset",
     "magnitude",
-    "magnitude - cold-fire",
-    "magnitude - jungle-cascade",
-    "magnitude - lively",
-    "magnitude - reset",
-    "magnitude - rolling-rainbow",
-    "magnitude - warm-bass",
     "marching",
-    "marching - reset",
     "melt",
-    "melt - reset",
     "multiBar",
-    "multiBar - Rainbow-oscillation",
-    "multiBar - bright-cascade",
-    "multiBar - falling-blues",
-    "multiBar - red-blue-expanse",
-    "multiBar - reset",
     "pitchSpectrum",
-    "pitchSpectrum - reset",
     "power",
-    "power - reset",
     "rain",
-    "rain - cold-drops",
-    "rain - meteor-shower",
-    "rain - prismatic",
-    "rain - reset",
-    "rain - ripples",
-    "rain - smooth-rwb",
     "rainbow",
-    "rainbow - cascade",
-    "rainbow - crawl",
-    "rainbow - faded",
-    "rainbow - gentle",
-    "rainbow - reset",
-    "rainbow - slow-roll",
     "real_strobe",
-    "real_strobe - bass_only",
-    "real_strobe - dancefloor",
-    "real_strobe - extreme",
-    "real_strobe - glitter",
-    "real_strobe - reset",
-    "real_strobe - strobe_only",
     "scroll",
-    "scroll - cold-crawl",
-    "scroll - dynamic-rgb",
-    "scroll - fast-hits",
-    "scroll - gentle-rgb",
-    "scroll - icicles",
-    "scroll - rays",
-    "scroll - reset",
-    "scroll - warmth",
     "singleColor",
-    "singleColor - blue",
-    "singleColor - cyan",
-    "singleColor - green",
-    "singleColor - magenta",
-    "singleColor - orange",
-    "singleColor - pink",
-    "singleColor - red",
-    "singleColor - red-waves",
-    "singleColor - reset",
-    "singleColor - steel-pulse",
-    "singleColor - turquoise-roll",
-    "singleColor - yellow",
     "spectrum",
-    "spectrum - reset",
     "strobe",
-    "strobe - aggro-red",
-    "strobe - blues-on-the-beat",
-    "strobe - fast-strobe",
-    "strobe - faster-strobe",
-    "strobe - painful",
-    "strobe - reset",
     "wavelength",
-    "wavelength - classic",
-    "wavelength - greens",
-    "wavelength - icy",
-    "wavelength - plasma",
-    "wavelength - reset",
-    "wavelength - rolling-blues",
-    "wavelength - rolling-warmth",
-    "wavelength - sunset-sweep",
 ]
 
 
@@ -277,13 +172,15 @@ async def test_devices_without_custom_preset(hass: HomeAssistant) -> None:
 
         state: State = hass.states.get(unique_id)
         assert state.state == STATE_ON
-        assert len(state.attributes["effect_list"]) == len(EFFECT_LIST) - 1
+        # Presets live in the preset select now, so empty custom presets no longer
+        # shrink the effect list.
+        assert len(state.attributes["effect_list"]) == len(EFFECT_LIST)
 
         unique_id = _generate_id("wled-1", updater.ip)
 
         state = hass.states.get(unique_id)
         assert state.state == STATE_OFF
-        assert len(state.attributes["effect_list"]) == len(EFFECT_LIST) - 1
+        assert len(state.attributes["effect_list"]) == len(EFFECT_LIST)
 
 
 @pytest.mark.asyncio
@@ -1001,7 +898,7 @@ async def test_devices_on_with_preset(hass: HomeAssistant) -> None:
         ) -> dict:
             assert is_virtual
             assert device_code == "wled-1"
-            assert category == "default_presets"
+            assert category == "ledfx_presets"
             assert effect == "bar"
             assert preset == "bouncing-blues"
 
@@ -1092,7 +989,7 @@ async def test_devices_on_with_preset_and_brightness(hass: HomeAssistant) -> Non
         ) -> dict:
             assert is_virtual
             assert device_code == "wled-1"
-            assert category == "default_presets"
+            assert category == "ledfx_presets"
             assert effect == "bar"
             assert preset == "bouncing-blues"
 

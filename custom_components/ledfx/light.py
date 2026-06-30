@@ -36,7 +36,7 @@ from .const import (
 )
 from .entity import LedFxEntity
 from .enum import ActionType, EffectCategory, Version
-from .helper import build_effects, find_effect, hex_to_rgbw, rgbw_to_hex
+from .helper import find_effect, hex_to_rgbw, rgbw_to_hex
 from .updater import (
     LedFxEntityDescription,
     LedFxUpdater,
@@ -134,11 +134,10 @@ class LedFxLight(LedFxEntity, LightEntity):
             updater.data.get(f"{self._attr_device_code}_{ATTR_LIGHT_COLOR}", None)
         )
 
-        self._attr_effect_list = build_effects(
-            updater.data.get(ATTR_LIGHT_EFFECTS, []),
-            updater.data.get(ATTR_LIGHT_DEFAULT_PRESETS, {}),
-            updater.data.get(ATTR_LIGHT_CUSTOM_PRESETS, {}),
-        )
+        # Presets are exposed through a dedicated per-device "Preset" select; the
+        # effect list holds base effects only so the selection round-trips (the
+        # backend reports the effect type, never the active preset).
+        self._attr_effect_list = list(updater.data.get(ATTR_LIGHT_EFFECTS, []))
         self._attr_effect = updater.data.get(
             f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
         )
@@ -164,11 +163,7 @@ class LedFxLight(LedFxEntity, LightEntity):
             self._updater.data.get(f"{self._attr_device_code}_{ATTR_LIGHT_COLOR}", None)
         )
 
-        effect_list = build_effects(
-            self._updater.data.get(ATTR_LIGHT_EFFECTS, []),
-            self._updater.data.get(ATTR_LIGHT_DEFAULT_PRESETS, {}),
-            self._updater.data.get(ATTR_LIGHT_CUSTOM_PRESETS, {}),
-        )
+        effect_list = list(self._updater.data.get(ATTR_LIGHT_EFFECTS, []))
         effect: str | None = self._updater.data.get(
             f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
         )
