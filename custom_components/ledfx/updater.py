@@ -47,6 +47,8 @@ from .const import (
     ATTR_LIGHT_STATE,
     ATTR_SELECT_AUDIO_INPUT,
     ATTR_SELECT_AUDIO_INPUT_OPTIONS,
+    ATTR_SELECT_DEVICE_PRESET,
+    ATTR_SELECT_DEVICE_PRESET_NAME,
     ATTR_STATE,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TIMEOUT,
@@ -673,6 +675,26 @@ class LedFxUpdater(DataUpdateCoordinator):
             )
 
             self._prepare_device_fields(code, device_info)
+
+            preset_key: str = f"{code}_{ATTR_SELECT_DEVICE_PRESET}"
+            if preset_key not in self.selects:
+                self.selects[preset_key] = LedFxEntityDescription(
+                    description=SelectEntityDescription(
+                        key=ATTR_SELECT_DEVICE_PRESET,
+                        name=ATTR_SELECT_DEVICE_PRESET_NAME,
+                        icon="mdi:playlist-star",
+                        entity_category=EntityCategory.CONFIG,
+                        entity_registry_enabled_default=True,
+                    ),
+                    type=ActionType.DEVICE_PRESET,
+                    device_info=device_info,
+                    device_code=code,
+                )
+
+                if self.new_select_callback:
+                    async_dispatcher_send(
+                        self.hass, SIGNAL_NEW_SELECT, self.selects[preset_key]
+                    )
 
             if code in self.devices:
                 continue

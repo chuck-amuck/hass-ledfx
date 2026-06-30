@@ -67,6 +67,8 @@ ATTR_FIELD_OPTIONS: Final = "options"
 ATTR_SELECT_AUDIO_INPUT: Final = "audio_input"
 ATTR_SELECT_AUDIO_INPUT_NAME: Final = "Audio input"
 ATTR_SELECT_AUDIO_INPUT_OPTIONS: Final = "audio_input_options"
+ATTR_SELECT_DEVICE_PRESET: Final = "preset"
+ATTR_SELECT_DEVICE_PRESET_NAME: Final = "Preset"
 
 """Light attributes"""
 ATTR_LIGHT_STATE: Final = "state"

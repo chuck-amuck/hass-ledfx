@@ -21,20 +21,23 @@ from .const import (
     ATTR_FIELD_EFFECTS,
     ATTR_FIELD_OPTIONS,
     ATTR_FIELD_TYPE,
+    ATTR_LIGHT_CUSTOM_PRESETS,
+    ATTR_LIGHT_DEFAULT_PRESETS,
     ATTR_LIGHT_EFFECT,
     ATTR_LIGHT_EFFECT_CONFIG,
     ATTR_LIGHT_STATE,
     ATTR_SELECT_AUDIO_INPUT,
     ATTR_SELECT_AUDIO_INPUT_NAME,
     ATTR_SELECT_AUDIO_INPUT_OPTIONS,
+    ATTR_SELECT_DEVICE_PRESET,
     ATTR_STATE,
     SELECT_ICONS,
     SIGNAL_NEW_SELECT,
 )
 from .entity import LedFxEntity
-from .enum import ActionType, Version
+from .enum import ActionType, EffectCategory, Version
 from .exceptions import LedFxError
-from .helper import generate_entity_id
+from .helper import find_effect, generate_entity_id
 from .updater import LedFxEntityDescription, LedFxUpdater, async_get_updater
 
 PARALLEL_UPDATES = 0
@@ -81,7 +84,8 @@ async def async_setup_entry(
             [
                 LedFxSelect(
                     f"{config_entry.entry_id}-{entity.device_code}-{entity.description.key}"
-                    if entity.type == ActionType.DEVICE
+                    if entity.type
+                    in (ActionType.DEVICE, ActionType.DEVICE_PRESET)
                     else f"{config_entry.entry_id}-{entity.description.key}",
                     entity,
                     updater,
@@ -169,6 +173,22 @@ class LedFxSelect(LedFxEntity, SelectEntity):
 
             return
 
+        if entity.type == ActionType.DEVICE_PRESET:
+            self._attr_device_code = entity.device_code
+
+            self.entity_id = generate_entity_id(
+                ENTITY_ID_FORMAT,
+                updater.ip,
+                f"{entity.device_code}_{entity.description.key}",
+            )
+
+            self._attr_current_option = None
+            self._attr_options = self._preset_options()
+            self._attr_available = self._preset_available()
+            self._attr_extra_state_attributes = {ATTR_DEVICE: self._attr_device_code}
+
+            return
+
         self._attr_current_option = updater.data.get(entity.description.key, None)
 
         self._options_key = (
@@ -193,7 +213,18 @@ class LedFxSelect(LedFxEntity, SelectEntity):
         current_option: str = self._attr_current_option
         options: dict | list = self._attr_options
 
-        if self._type == ActionType.DEVICE:
+        if self._type == ActionType.DEVICE_PRESET:
+            options = self._preset_options()
+            is_available = self._preset_available()
+
+            # Backend reports the effect type only, not the active preset, so drop
+            # the selection once it no longer applies to the current effect.
+            current_option = (
+                self._attr_current_option
+                if self._attr_current_option in options
+                else None
+            )
+        elif self._type == ActionType.DEVICE:
             current_option = self._updater.data.get(
                 f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT_CONFIG}", {}
             ).get(self.entity_description.key)
@@ -230,6 +261,76 @@ class LedFxSelect(LedFxEntity, SelectEntity):
         self._attr_options = options
 
         self.async_write_ha_state()
+
+    def _preset_options(self) -> list:
+        """Presets available for the device's current effect.
+
+        :return list: Preset options
+        """
+
+        effect: str | None = self._updater.data.get(
+            f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+        )
+
+        if not effect:
+            return []
+
+        default_presets: dict = self._updater.data.get(ATTR_LIGHT_DEFAULT_PRESETS, {})
+        custom_presets: dict = self._updater.data.get(ATTR_LIGHT_CUSTOM_PRESETS, {})
+
+        return sorted(
+            set(default_presets.get(effect, []) + custom_presets.get(effect, []))
+        )
+
+    def _preset_available(self) -> bool:
+        """Preset select availability.
+
+        :return bool: Is available
+        """
+
+        return bool(
+            self._updater.data.get(ATTR_STATE, False)
+            and self._updater.data.get(f"{self._attr_device_code}_{ATTR_LIGHT_STATE}")
+            and len(self._preset_options()) > 0
+        )
+
+    async def _preset_change(self, option: str) -> bool:
+        """Apply a preset to the device's current effect.
+
+        :param option: str: Preset option
+        :return bool: Result
+        """
+
+        effect: str | None = self._updater.data.get(
+            f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+        )
+
+        if not effect:
+            return False
+
+        _, preset, category = find_effect(
+            f"{effect} - {option}",
+            self._updater.data.get(ATTR_LIGHT_DEFAULT_PRESETS, {}),
+            self._updater.data.get(ATTR_LIGHT_CUSTOM_PRESETS, {}),
+        )
+
+        if category == EffectCategory.NONE or preset is None:
+            return False
+
+        try:
+            await self._updater.client.preset(
+                self._attr_device_code,  # type: ignore
+                category.value,
+                effect,
+                preset,
+                self._updater.version == Version.V2,
+            )
+
+            return True
+        except LedFxError as _e:
+            _LOGGER.debug("Preset update error: %r", _e)
+
+        return False
 
     async def _audio_input_change(self, option: str) -> bool:
         """Audio input
@@ -276,7 +377,7 @@ class LedFxSelect(LedFxEntity, SelectEntity):
 
         if action := getattr(self, f"_{code}_change"):
             if await action(option):
-                if self._type != ActionType.DEVICE:
+                if self._type == ActionType.DEFAULT:
                     self._updater.data[self.entity_description.key] = option
 
                 self._attr_current_option = option
