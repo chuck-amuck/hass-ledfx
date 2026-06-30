@@ -393,13 +393,17 @@ class LedFxUpdater(DataUpdateCoordinator):
             )
 
         if entity_data.get("type") in ("integer", "number"):
+            # LedFx schemas carry no explicit step. Use 1 for integers and a
+            # fine step for floats; the previous behaviour derived the step from
+            # `minimum`, producing coarse/fractional steps across many effects.
+            is_int: bool = entity_data.get("type") == "integer"
             return (
                 NumberEntityDescription(
                     key=code,
                     name=entity_data.get("title", code.title()),
                     native_max_value=float(entity_data.get("maximum", 0.0)),
                     native_min_value=float(entity_data.get("minimum", 0.0)),
-                    native_step=max(float(entity_data.get("minimum", 0.1)), 0.1),
+                    native_step=1.0 if is_int else 0.01,
                     entity_category=EntityCategory.CONFIG,
                     entity_registry_enabled_default=False,
                 ),
@@ -418,6 +422,13 @@ class LedFxUpdater(DataUpdateCoordinator):
                     else self.colors.keys()
                 )
                 field_type = "color"
+
+            # Free-text / path / dynamic string params (e.g. texter2d.text,
+            # gifplayer.image_location, blender.foreground) carry no enum. A
+            # select with no options is unusable, so skip building an entity
+            # rather than emit an empty dropdown.
+            if entity_data.get("type") == "string" and not enum:
+                return None, None, None
 
             return (
                 SelectEntityDescription(
