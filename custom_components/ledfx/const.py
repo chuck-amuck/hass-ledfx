@@ -19,6 +19,7 @@ PLATFORMS: Final = [
     Platform.SWITCH,
     Platform.NUMBER,
     Platform.SELECT,
+    Platform.TEXT,
     Platform.MEDIA_PLAYER,
 ]
 
@@ -36,6 +37,7 @@ SIGNAL_NEW_NUMBER: Final = f"{DOMAIN}-new-number"
 SIGNAL_NEW_SELECT: Final = f"{DOMAIN}-new-select"
 SIGNAL_NEW_SENSOR: Final = f"{DOMAIN}-new-sensor"
 SIGNAL_NEW_SWITCH: Final = f"{DOMAIN}-new-switch"
+SIGNAL_NEW_TEXT: Final = f"{DOMAIN}-new-text"
 OPTION_IS_FROM_FLOW: Final = "is_from_flow"
 
 """Custom conf"""

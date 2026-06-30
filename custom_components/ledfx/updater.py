@@ -15,6 +15,7 @@ from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.select import SelectEntityDescription
 from homeassistant.components.sensor import SensorEntityDescription, SensorStateClass
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntityDescription
+from homeassistant.components.text import TextEntityDescription
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import event
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
@@ -58,6 +59,7 @@ from .const import (
     SIGNAL_NEW_SELECT,
     SIGNAL_NEW_SENSOR,
     SIGNAL_NEW_SWITCH,
+    SIGNAL_NEW_TEXT,
     UPDATER,
 )
 from .enum import ActionType, Version
@@ -91,6 +93,7 @@ class LedFxUpdater(DataUpdateCoordinator):
     new_device_callback: CALLBACK_TYPE | None = None
     new_number_callback: CALLBACK_TYPE | None = None
     new_select_callback: CALLBACK_TYPE | None = None
+    new_text_callback: CALLBACK_TYPE | None = None
     new_sensor_callback: CALLBACK_TYPE | None = None
     new_switch_callback: CALLBACK_TYPE | None = None
 
@@ -148,6 +151,7 @@ class LedFxUpdater(DataUpdateCoordinator):
         self.devices: dict[str, LedFxEntityDescription] = {}
         self.numbers: dict[str, LedFxEntityDescription] = {}
         self.selects: dict[str, LedFxEntityDescription] = {}
+        self.texts: dict[str, LedFxEntityDescription] = {}
         self.sensors: dict[str, LedFxEntityDescription] = {}
         self.switches: dict[str, LedFxEntityDescription] = {}
 
@@ -167,6 +171,7 @@ class LedFxUpdater(DataUpdateCoordinator):
             self.new_select_callback,
             self.new_sensor_callback,
             self.new_switch_callback,
+            self.new_text_callback,
         ]
 
         for _callback in callbacks:
@@ -424,11 +429,19 @@ class LedFxUpdater(DataUpdateCoordinator):
                 field_type = "color"
 
             # Free-text / path / dynamic string params (e.g. texter2d.text,
-            # gifplayer.image_location, blender.foreground) carry no enum. A
-            # select with no options is unusable, so skip building an entity
-            # rather than emit an empty dropdown.
+            # gifplayer.image_location, blender.foreground) carry no enum, so a
+            # select is meaningless. Expose them as editable text entities.
             if entity_data.get("type") == "string" and not enum:
-                return None, None, None
+                return (
+                    TextEntityDescription(
+                        key=code,
+                        name=entity_data.get("title", code.title()),
+                        entity_category=EntityCategory.CONFIG,
+                        entity_registry_enabled_default=False,
+                    ),
+                    "text",
+                    None,
+                )
 
             return (
                 SelectEntityDescription(
@@ -764,6 +777,23 @@ class LedFxUpdater(DataUpdateCoordinator):
 
                 if self.new_select_callback:
                     signal = SIGNAL_NEW_SELECT
+            elif isinstance(info[ATTR_FIELD], TextEntityDescription):
+                if f"{code}_{prop}" in self.texts:
+                    continue
+
+                field = self.texts[f"{code}_{prop}"] = LedFxEntityDescription(
+                    description=info[ATTR_FIELD],
+                    type=ActionType.DEVICE,
+                    device_info=device_info,
+                    device_code=code,
+                    extra={
+                        ATTR_FIELD_EFFECTS: sorted(info.get(ATTR_FIELD_EFFECTS, {})),
+                        ATTR_FIELD_TYPE: info.get(ATTR_FIELD_TYPE),
+                    },
+                )
+
+                if self.new_text_callback:
+                    signal = SIGNAL_NEW_TEXT
 
             if field is not None and signal is not None:
                 async_dispatcher_send(
