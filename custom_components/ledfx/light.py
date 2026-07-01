@@ -136,10 +136,15 @@ class LedFxLight(LedFxEntity, LightEntity):
 
         # Presets are exposed through a dedicated per-device "Preset" select; the
         # effect list holds base effects only so the selection round-trips (the
-        # backend reports the effect type, never the active preset).
-        self._attr_effect_list = list(updater.data.get(ATTR_LIGHT_EFFECTS, []))
-        self._attr_effect = updater.data.get(
-            f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+        # backend reports the effect type, never the active preset). Options are
+        # "Category: Name" labels (matching the Effect select); internally only
+        # the raw effect id is ever sent to LedFx or stored in updater.data.
+        self._attr_effect_list = updater.effect_options or list(
+            updater.data.get(ATTR_LIGHT_EFFECTS, [])
+        )
+        self._attr_effect = updater.effect_id_to_label.get(
+            updater.data.get(f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"),
+            updater.data.get(f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"),
         )
         self._attr_extra_state_attributes = updater.data.get(
             f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT_CONFIG}", {}
@@ -163,9 +168,14 @@ class LedFxLight(LedFxEntity, LightEntity):
             self._updater.data.get(f"{self._attr_device_code}_{ATTR_LIGHT_COLOR}", None)
         )
 
-        effect_list = list(self._updater.data.get(ATTR_LIGHT_EFFECTS, []))
-        effect: str | None = self._updater.data.get(
+        effect_list = self._updater.effect_options or list(
+            self._updater.data.get(ATTR_LIGHT_EFFECTS, [])
+        )
+        effect_id: str | None = self._updater.data.get(
             f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+        )
+        effect: str | None = self._updater.effect_id_to_label.get(
+            effect_id, effect_id
         )
         attributes: dict = {
             code: value
@@ -204,33 +214,38 @@ class LedFxLight(LedFxEntity, LightEntity):
 
         is_virtual: bool = self._updater.version == Version.V2
         preset: str | None = None
-        old_effect: str | None = self._attr_effect
+        # kwargs[ATTR_EFFECT] is a "Category: Name" label from the effect list
+        # (or a raw effect id / "id - preset" string from a direct service call);
+        # LedFx only ever speaks raw effect ids, so resolve before comparing/wiring.
+        old_effect_id: str | None = self._updater.data.get(
+            f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+        )
+        effect_id: str | None = old_effect_id
         category: EffectCategory = EffectCategory.NONE
 
         if ATTR_EFFECT in kwargs:
-            self._attr_effect, preset, category = find_effect(
-                kwargs[ATTR_EFFECT],
+            effect_input: str = self._updater.effect_label_to_id.get(
+                kwargs[ATTR_EFFECT], kwargs[ATTR_EFFECT]
+            )
+            effect_id, preset, category = find_effect(
+                effect_input,
                 self._updater.data.get(ATTR_LIGHT_DEFAULT_PRESETS, []),
                 self._updater.data.get(ATTR_LIGHT_CUSTOM_PRESETS, []),
             )
 
-        if (
-            self._attr_effect != old_effect
-            or not self._attr_is_on
-            or preset is not None
-        ):
+        if effect_id != old_effect_id or not self._attr_is_on or preset is not None:
             response: dict = dict(
                 await self._updater.client.preset(
                     self._attr_device_code,  # type: ignore
                     category.value,
-                    self._attr_effect,  # type: ignore
+                    effect_id,  # type: ignore
                     preset,  # type: ignore
                     is_virtual,
                 )
                 if category != EffectCategory.NONE and preset is not None
                 else await self._updater.client.device_on(
                     self._attr_device_code,  # type: ignore
-                    self._attr_effect,  # type: ignore
+                    effect_id,  # type: ignore
                     is_virtual,
                 )
             )
@@ -245,7 +260,7 @@ class LedFxLight(LedFxEntity, LightEntity):
 
             self._updater.data[
                 f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
-            ] = self._attr_effect
+            ] = effect_id
 
             self._updater.data[
                 f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT_CONFIG}"
@@ -254,6 +269,10 @@ class LedFxLight(LedFxEntity, LightEntity):
                 for code, value in effect_config.items()
                 if code != ATTR_BRIGHTNESS
             }
+
+            self._attr_effect = self._updater.effect_id_to_label.get(
+                effect_id, effect_id
+            )
 
         if ATTR_BRIGHTNESS in kwargs:
             await self.async_update_effect(
