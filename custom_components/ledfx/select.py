@@ -21,14 +21,18 @@ from .const import (
     ATTR_FIELD_EFFECTS,
     ATTR_FIELD_OPTIONS,
     ATTR_FIELD_TYPE,
+    ATTR_LIGHT_BRIGHTNESS,
     ATTR_LIGHT_CUSTOM_PRESETS,
     ATTR_LIGHT_DEFAULT_PRESETS,
     ATTR_LIGHT_EFFECT,
     ATTR_LIGHT_EFFECT_CONFIG,
+    ATTR_LIGHT_EFFECTS,
     ATTR_LIGHT_STATE,
+    ATTR_PRESET_DEFAULT,
     ATTR_SELECT_AUDIO_INPUT,
     ATTR_SELECT_AUDIO_INPUT_NAME,
     ATTR_SELECT_AUDIO_INPUT_OPTIONS,
+    ATTR_SELECT_DEVICE_EFFECT,
     ATTR_SELECT_DEVICE_PRESET,
     ATTR_STATE,
     SELECT_ICONS,
@@ -85,7 +89,11 @@ async def async_setup_entry(
                 LedFxSelect(
                     f"{config_entry.entry_id}-{entity.device_code}-{entity.description.key}"
                     if entity.type
-                    in (ActionType.DEVICE, ActionType.DEVICE_PRESET)
+                    in (
+                        ActionType.DEVICE,
+                        ActionType.DEVICE_PRESET,
+                        ActionType.DEVICE_EFFECT,
+                    )
                     else f"{config_entry.entry_id}-{entity.description.key}",
                     entity,
                     updater,
@@ -173,7 +181,7 @@ class LedFxSelect(LedFxEntity, SelectEntity):
 
             return
 
-        if entity.type == ActionType.DEVICE_PRESET:
+        if entity.type in (ActionType.DEVICE_PRESET, ActionType.DEVICE_EFFECT):
             self._attr_device_code = entity.device_code
 
             self.entity_id = generate_entity_id(
@@ -182,10 +190,18 @@ class LedFxSelect(LedFxEntity, SelectEntity):
                 f"{entity.device_code}_{entity.description.key}",
             )
 
-            self._attr_current_option = None
-            self._attr_options = self._preset_options()
-            self._attr_available = self._preset_available()
             self._attr_extra_state_attributes = {ATTR_DEVICE: self._attr_device_code}
+
+            if entity.type == ActionType.DEVICE_EFFECT:
+                self._attr_current_option = self._updater.data.get(
+                    f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+                )
+                self._attr_options = self._effect_select_options()
+                self._attr_available = self._effect_select_available()
+            else:
+                self._attr_current_option = None
+                self._attr_options = self._preset_options()
+                self._attr_available = self._preset_available()
 
             return
 
@@ -213,7 +229,13 @@ class LedFxSelect(LedFxEntity, SelectEntity):
         current_option: str = self._attr_current_option
         options: dict | list = self._attr_options
 
-        if self._type == ActionType.DEVICE_PRESET:
+        if self._type == ActionType.DEVICE_EFFECT:
+            options = self._effect_select_options()
+            is_available = self._effect_select_available()
+            current_option = self._updater.data.get(
+                f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+            )
+        elif self._type == ActionType.DEVICE_PRESET:
             options = self._preset_options()
             is_available = self._preset_available()
 
@@ -262,8 +284,71 @@ class LedFxSelect(LedFxEntity, SelectEntity):
 
         self.async_write_ha_state()
 
+    def _effect_select_options(self) -> list:
+        """Base effects available on the instance.
+
+        :return list: Effect options
+        """
+
+        return list(self._updater.data.get(ATTR_LIGHT_EFFECTS, []))
+
+    def _effect_select_available(self) -> bool:
+        """Effect select availability.
+
+        :return bool: Is available
+        """
+
+        return bool(
+            self._updater.data.get(ATTR_STATE, False)
+            and len(self._effect_select_options()) > 0
+        )
+
+    async def _effect_change(self, option: str) -> bool:
+        """Set the device's base effect (loads that effect's default config).
+
+        :param option: str: Effect option
+        :return bool: Result
+        """
+
+        try:
+            response: dict = dict(
+                await self._updater.client.device_on(
+                    self._attr_device_code,  # type: ignore
+                    option,
+                    self._updater.version == Version.V2,
+                )
+            )
+        except LedFxError as _e:
+            _LOGGER.debug("Effect update error: %r", _e)
+
+            return False
+
+        effect_config: dict = {
+            key: value
+            for key, value in response.get("effect", {}).get("config", {}).items()
+            if not isinstance(value, (dict, list))
+        }
+
+        self._updater.data[f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"] = option
+        self._updater.data[f"{self._attr_device_code}_{ATTR_LIGHT_STATE}"] = True
+        self._updater.data[f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT_CONFIG}"] = {
+            code: value
+            for code, value in effect_config.items()
+            if code != ATTR_LIGHT_BRIGHTNESS
+        }
+
+        # Refresh siblings (light, preset select) so the new effect/presets show
+        # immediately instead of on the next poll.
+        self._updater.async_update_listeners()
+
+        return True
+
     def _preset_options(self) -> list:
         """Presets available for the device's current effect.
+
+        The synthetic "Default" option (re-applies the effect's default config)
+        is always offered first when an effect is set, so the selector is usable
+        even for effects that ship no presets.
 
         :return list: Preset options
         """
@@ -278,7 +363,7 @@ class LedFxSelect(LedFxEntity, SelectEntity):
         default_presets: dict = self._updater.data.get(ATTR_LIGHT_DEFAULT_PRESETS, {})
         custom_presets: dict = self._updater.data.get(ATTR_LIGHT_CUSTOM_PRESETS, {})
 
-        return sorted(
+        return [ATTR_PRESET_DEFAULT] + sorted(
             set(default_presets.get(effect, []) + custom_presets.get(effect, []))
         )
 
@@ -295,7 +380,7 @@ class LedFxSelect(LedFxEntity, SelectEntity):
         )
 
     async def _preset_change(self, option: str) -> bool:
-        """Apply a preset to the device's current effect.
+        """Apply a preset (or reset to default) for the device's current effect.
 
         :param option: str: Preset option
         :return bool: Result
@@ -307,6 +392,9 @@ class LedFxSelect(LedFxEntity, SelectEntity):
 
         if not effect:
             return False
+
+        if option == ATTR_PRESET_DEFAULT:
+            return await self._effect_change(effect)
 
         _, preset, category = find_effect(
             f"{effect} - {option}",

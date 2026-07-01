@@ -47,6 +47,8 @@ from .const import (
     ATTR_LIGHT_STATE,
     ATTR_SELECT_AUDIO_INPUT,
     ATTR_SELECT_AUDIO_INPUT_OPTIONS,
+    ATTR_SELECT_DEVICE_EFFECT,
+    ATTR_SELECT_DEVICE_EFFECT_NAME,
     ATTR_SELECT_DEVICE_PRESET,
     ATTR_SELECT_DEVICE_PRESET_NAME,
     ATTR_STATE,
@@ -676,24 +678,40 @@ class LedFxUpdater(DataUpdateCoordinator):
 
             self._prepare_device_fields(code, device_info)
 
-            preset_key: str = f"{code}_{ATTR_SELECT_DEVICE_PRESET}"
-            if preset_key not in self.selects:
-                self.selects[preset_key] = LedFxEntityDescription(
+            for select_key, select_name, select_icon, select_type in (
+                (
+                    ATTR_SELECT_DEVICE_EFFECT,
+                    ATTR_SELECT_DEVICE_EFFECT_NAME,
+                    "mdi:auto-fix",
+                    ActionType.DEVICE_EFFECT,
+                ),
+                (
+                    ATTR_SELECT_DEVICE_PRESET,
+                    ATTR_SELECT_DEVICE_PRESET_NAME,
+                    "mdi:playlist-star",
+                    ActionType.DEVICE_PRESET,
+                ),
+            ):
+                field_key: str = f"{code}_{select_key}"
+                if field_key in self.selects:
+                    continue
+
+                self.selects[field_key] = LedFxEntityDescription(
                     description=SelectEntityDescription(
-                        key=ATTR_SELECT_DEVICE_PRESET,
-                        name=ATTR_SELECT_DEVICE_PRESET_NAME,
-                        icon="mdi:playlist-star",
+                        key=select_key,
+                        name=select_name,
+                        icon=select_icon,
                         entity_category=EntityCategory.CONFIG,
                         entity_registry_enabled_default=True,
                     ),
-                    type=ActionType.DEVICE_PRESET,
+                    type=select_type,
                     device_info=device_info,
                     device_code=code,
                 )
 
                 if self.new_select_callback:
                     async_dispatcher_send(
-                        self.hass, SIGNAL_NEW_SELECT, self.selects[preset_key]
+                        self.hass, SIGNAL_NEW_SELECT, self.selects[field_key]
                     )
 
             if code in self.devices:
