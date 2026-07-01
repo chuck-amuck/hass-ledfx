@@ -38,37 +38,38 @@ from tests.setup import MultipleSideEffect, async_mock_client_2, async_setup
 _LOGGER = logging.getLogger(__name__)
 
 # Presets are no longer mixed into the effect list; they are exposed via the
-# dedicated per-device "Preset" select. The effect list holds base effects only.
+# dedicated per-device "Preset" select. The effect list holds base effects only,
+# presented as "Category: Name" labels ordered by category then name.
 EFFECT_LIST: Final = [
-    "bands",
-    "bands_matrix",
-    "bar",
-    "blade_power_plus",
-    "block_reflections",
-    "blocks",
-    "crawler",
-    "energy",
-    "energy2",
-    "equalizer",
-    "fade",
-    "fire",
-    "glitch",
-    "gradient",
-    "lava_lamp",
-    "magnitude",
-    "marching",
-    "melt",
-    "multiBar",
-    "pitchSpectrum",
-    "power",
-    "rain",
-    "rainbow",
-    "real_strobe",
-    "scroll",
-    "singleColor",
-    "spectrum",
-    "strobe",
-    "wavelength",
+    "2D: Bands",
+    "2D: Bands Matrix",
+    "2D: Blocks",
+    "2D: Equalizer",
+    "Atmospheric: Block Reflections",
+    "Atmospheric: Crawler",
+    "Atmospheric: Energy 2",
+    "Atmospheric: Fire",
+    "Atmospheric: Glitch",
+    "Atmospheric: Lava lamp",
+    "Atmospheric: Marching",
+    "Atmospheric: Melt",
+    "BPM: Bar",
+    "BPM: BPM Strobe",
+    "BPM: Multicolor Bar",
+    "Classic: Blade Power+",
+    "Classic: Energy",
+    "Classic: Magnitude",
+    "Classic: Pitch Spectrum",
+    "Classic: Power",
+    "Classic: Rain",
+    "Classic: Scroll",
+    "Classic: Spectrum",
+    "Classic: Strobe",
+    "Classic: Wavelength",
+    "Non-Reactive: Fade",
+    "Non-Reactive: Gradient",
+    "Non-Reactive: Rainbow",
+    "Non-Reactive: Single Color",
 ]
 
 
@@ -115,7 +116,7 @@ async def test_devices(hass: HomeAssistant) -> None:
         assert state.name == "WLED"
         assert state.attributes["icon"] == "mdi:led-strip-variant"
         assert state.attributes["effect_list"] == EFFECT_LIST
-        assert state.attributes["effect"] == "magnitude"
+        assert state.attributes["effect"] == "Classic: Magnitude"
         assert state.attributes["attribution"] == ATTRIBUTION
 
         unique_id = _generate_id("wled-1", updater.ip)
@@ -312,7 +313,7 @@ async def test_devices_on(hass: HomeAssistant) -> None:
 
         state = hass.states.get(unique_id)
         assert state.state == STATE_ON
-        assert state.attributes["effect"] == "bands"
+        assert state.attributes["effect"] == "2D: Bands"
 
         with pytest.raises(LedFxRequestError):
             await hass.services.async_call(
@@ -958,7 +959,7 @@ async def test_devices_on_with_preset(hass: HomeAssistant) -> None:
 
         state = hass.states.get(unique_id)
         assert state.state == STATE_ON
-        assert state.attributes["effect"] == "bar"
+        assert state.attributes["effect"] == "BPM: Bar"
 
         with pytest.raises(LedFxRequestError):
             await hass.services.async_call(
@@ -1052,7 +1053,7 @@ async def test_devices_on_with_preset_and_brightness(hass: HomeAssistant) -> Non
         state = hass.states.get(unique_id)
         assert state.state == STATE_ON
         assert state.attributes["brightness"] == 125
-        assert state.attributes["effect"] == "bar"
+        assert state.attributes["effect"] == "BPM: Bar"
 
         with pytest.raises(LedFxRequestError):
             await hass.services.async_call(
