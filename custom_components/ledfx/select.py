@@ -193,9 +193,7 @@ class LedFxSelect(LedFxEntity, SelectEntity):
             self._attr_extra_state_attributes = {ATTR_DEVICE: self._attr_device_code}
 
             if entity.type == ActionType.DEVICE_EFFECT:
-                self._attr_current_option = self._updater.data.get(
-                    f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
-                )
+                self._attr_current_option = self._effect_current_label()
                 self._attr_options = self._effect_select_options()
                 self._attr_available = self._effect_select_available()
             else:
@@ -232,9 +230,7 @@ class LedFxSelect(LedFxEntity, SelectEntity):
         if self._type == ActionType.DEVICE_EFFECT:
             options = self._effect_select_options()
             is_available = self._effect_select_available()
-            current_option = self._updater.data.get(
-                f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
-            )
+            current_option = self._effect_current_label()
         elif self._type == ActionType.DEVICE_PRESET:
             options = self._preset_options()
             is_available = self._preset_available()
@@ -285,12 +281,26 @@ class LedFxSelect(LedFxEntity, SelectEntity):
         self.async_write_ha_state()
 
     def _effect_select_options(self) -> list:
-        """Base effects available on the instance.
+        """Effects available on the instance, as "Category: Name" labels.
 
         :return list: Effect options
         """
 
-        return list(self._updater.data.get(ATTR_LIGHT_EFFECTS, []))
+        return self._updater.effect_options or list(
+            self._updater.data.get(ATTR_LIGHT_EFFECTS, [])
+        )
+
+    def _effect_current_label(self) -> str | None:
+        """Label of the device's current effect (id mapped to display label).
+
+        :return str | None: Current option
+        """
+
+        effect: str | None = self._updater.data.get(
+            f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"
+        )
+
+        return self._updater.effect_id_to_label.get(effect, effect)
 
     def _effect_select_available(self) -> bool:
         """Effect select availability.
@@ -306,15 +316,20 @@ class LedFxSelect(LedFxEntity, SelectEntity):
     async def _effect_change(self, option: str) -> bool:
         """Set the device's base effect (loads that effect's default config).
 
+        Accepts either a "Category: Name" label (from the effect select) or a
+        raw effect id (from the preset "Default" reset).
+
         :param option: str: Effect option
         :return bool: Result
         """
+
+        effect: str = self._updater.effect_label_to_id.get(option, option)
 
         try:
             response: dict = dict(
                 await self._updater.client.device_on(
                     self._attr_device_code,  # type: ignore
-                    option,
+                    effect,
                     self._updater.version == Version.V2,
                 )
             )
@@ -329,7 +344,7 @@ class LedFxSelect(LedFxEntity, SelectEntity):
             if not isinstance(value, (dict, list))
         }
 
-        self._updater.data[f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"] = option
+        self._updater.data[f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT}"] = effect
         self._updater.data[f"{self._attr_device_code}_{ATTR_LIGHT_STATE}"] = True
         self._updater.data[f"{self._attr_device_code}_{ATTR_LIGHT_EFFECT_CONFIG}"] = {
             code: value
