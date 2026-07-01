@@ -434,20 +434,21 @@ async def test_device_effect(hass: HomeAssistant) -> None:
         state: State = hass.states.get(unique_id)
         assert state is not None
         assert state.name == "Effect"
-        assert state.state == "magnitude"
-        assert "gradient" in state.attributes["options"]
-        assert "magnitude" in state.attributes["options"]
+        # Options are "Category: Name" labels ordered by category then name.
+        assert state.state == "Classic: Magnitude"
+        assert "Non-Reactive: Gradient" in state.attributes["options"]
+        assert "Classic: Magnitude" in state.attributes["options"]
 
         assert await hass.services.async_call(
             SELECT_DOMAIN,
             SERVICE_SELECT_OPTION,
-            {ATTR_ENTITY_ID: [unique_id], ATTR_OPTION: "gradient"},
+            {ATTR_ENTITY_ID: [unique_id], ATTR_OPTION: "Non-Reactive: Gradient"},
             blocking=True,
             limit=None,
         )
 
         state = hass.states.get(unique_id)
-        assert state.state == "gradient"
+        assert state.state == "Non-Reactive: Gradient"
 
 
 def _generate_id(code: str, ip_address: str) -> str:

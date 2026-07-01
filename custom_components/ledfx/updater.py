@@ -163,6 +163,13 @@ class LedFxUpdater(DataUpdateCoordinator):
         self.colors: dict = {}
         self.gradients: dict = {}
 
+        # Effect select presentation: options are "Category: Name" labels ordered
+        # by category then name; the maps translate to/from the raw effect id
+        # that LedFx expects on the wire.
+        self.effect_options: list[str] = []
+        self.effect_label_to_id: dict[str, str] = {}
+        self.effect_id_to_label: dict[str, str] = {}
+
         self._is_first_update: bool = True
 
     async def async_stop(self) -> None:
@@ -329,6 +336,27 @@ class LedFxUpdater(DataUpdateCoordinator):
 
         if "effects" in response and response["effects"]:
             data[ATTR_LIGHT_EFFECTS] = sorted(list(response["effects"].keys()))
+
+            ordered: list[tuple[str, str, str]] = sorted(
+                (
+                    (
+                        fields.get("category", "Other"),
+                        fields.get("name", effect.title()),
+                        effect,
+                    )
+                    for effect, fields in response["effects"].items()
+                ),
+                key=lambda item: (item[0].lower(), item[1].lower()),
+            )
+
+            self.effect_options = [f"{category}: {name}" for category, name, _ in ordered]
+            self.effect_label_to_id = {
+                f"{category}: {name}": effect for category, name, effect in ordered
+            }
+            self.effect_id_to_label = {
+                effect: label
+                for label, effect in self.effect_label_to_id.items()
+            }
 
             for effect, fields in response["effects"].items():
                 for code, parameter in fields["schema"]["properties"].items():
