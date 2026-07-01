@@ -28,6 +28,7 @@ class ActionType(StrEnum):
     SCENE = "scene"
     DEVICE = "device"
     DEVICE_PRESET = "device_preset"
+    DEVICE_EFFECT = "device_effect"
 
 
 class EffectCategory(StrEnum):

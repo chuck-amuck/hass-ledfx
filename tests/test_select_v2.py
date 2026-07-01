@@ -364,8 +364,9 @@ async def test_device_preset(hass: HomeAssistant) -> None:
         assert state is not None
         assert state.name == "Preset"
         assert state.attributes["icon"] == "mdi:playlist-star"
-        # Presets for the device's active effect (magnitude) only.
+        # "Default" (reset) first, then the active effect's (magnitude) presets.
         assert state.attributes["options"] == [
+            "Default",
             "cold-fire",
             "jungle-cascade",
             "lively",
@@ -396,6 +397,57 @@ async def test_device_preset(hass: HomeAssistant) -> None:
 
         state = hass.states.get(unique_id)
         assert state.state == "cold-fire"
+
+
+@pytest.mark.asyncio
+async def test_device_effect(hass: HomeAssistant) -> None:
+    """Test per-device effect select.
+
+    :param hass: HomeAssistant
+    """
+
+    with patch("custom_components.ledfx.updater.LedFxClient") as mock_client:
+        await async_mock_client_2(mock_client)
+
+        def success_on(
+            device_code: str, effect: str, is_virtual: bool = False
+        ) -> dict:
+            assert is_virtual
+            assert device_code == "wled"
+            assert effect == "gradient"
+
+            return json.loads(load_fixture("effect_data.json"))
+
+        mock_client.return_value.device_on = AsyncMock(side_effect=success_on)
+
+        _, config_entry = await async_setup(hass)
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        updater: LedFxUpdater = hass.data[DOMAIN][config_entry.entry_id][UPDATER]
+
+        assert updater.last_update_success
+
+        unique_id: str = _generate_id("wled_effect", updater.ip)
+
+        state: State = hass.states.get(unique_id)
+        assert state is not None
+        assert state.name == "Effect"
+        assert state.state == "magnitude"
+        assert "gradient" in state.attributes["options"]
+        assert "magnitude" in state.attributes["options"]
+
+        assert await hass.services.async_call(
+            SELECT_DOMAIN,
+            SERVICE_SELECT_OPTION,
+            {ATTR_ENTITY_ID: [unique_id], ATTR_OPTION: "gradient"},
+            blocking=True,
+            limit=None,
+        )
+
+        state = hass.states.get(unique_id)
+        assert state.state == "gradient"
 
 
 def _generate_id(code: str, ip_address: str) -> str:

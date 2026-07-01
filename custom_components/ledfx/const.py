@@ -69,6 +69,11 @@ ATTR_SELECT_AUDIO_INPUT_NAME: Final = "Audio input"
 ATTR_SELECT_AUDIO_INPUT_OPTIONS: Final = "audio_input_options"
 ATTR_SELECT_DEVICE_PRESET: Final = "preset"
 ATTR_SELECT_DEVICE_PRESET_NAME: Final = "Preset"
+ATTR_SELECT_DEVICE_EFFECT: Final = "effect"
+ATTR_SELECT_DEVICE_EFFECT_NAME: Final = "Effect"
+# Synthetic first option of the preset select: re-applies the current effect
+# with its default config (LedFx 2.3.x has no per-effect "reset" preset).
+ATTR_PRESET_DEFAULT: Final = "Default"
 
 """Light attributes"""
 ATTR_LIGHT_STATE: Final = "state"
