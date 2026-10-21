@@ -45,6 +45,10 @@ CONF_BASIC_AUTH: Final = "basic_auth"
 
 """Default settings"""
 DEFAULT_SCAN_INTERVAL: Final = 7
+# Config/schema/colors/scenes are ~400 KB per fetch and only change on a LedFx
+# upgrade or a settings edit, so they refresh on this slower cadence instead of
+# every scan_interval.
+STATIC_REFRESH_INTERVAL: Final = 600
 DEFAULT_TIMEOUT: Final = 10
 DEFAULT_POST_TIMEOUT: Final = 60
 DEFAULT_CALL_DELAY: Final = 1

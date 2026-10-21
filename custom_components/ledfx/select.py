@@ -449,6 +449,10 @@ class LedFxSelect(LedFxEntity, SelectEntity):
                     int(option_ids[0]), self._updater.version == Version.V2
                 )
 
+                # The audio device is read from /api/config, which is only
+                # polled slowly; refetch it now so the select doesn't revert.
+                self._updater.request_static_refresh()
+
                 return True
             except LedFxError as _e:
                 _LOGGER.debug("Audio input update error: %r", _e)

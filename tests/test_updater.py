@@ -6,15 +6,26 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import load_fixture
+from homeassistant.util.dt import utcnow
+from pytest_homeassistant_custom_component.common import (
+    async_fire_time_changed,
+    load_fixture,
+)
 
-from custom_components.ledfx.const import ATTR_SELECT_AUDIO_INPUT, DOMAIN, UPDATER
+from custom_components.ledfx.const import (
+    ATTR_SELECT_AUDIO_INPUT,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    STATIC_REFRESH_INTERVAL,
+    UPDATER,
+)
 from custom_components.ledfx.updater import LedFxUpdater, async_get_updater
-from tests.setup import async_mock_client, async_setup
+from tests.setup import async_mock_client, async_mock_client_2, async_setup
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -118,3 +129,57 @@ async def test_updater_get_updater(hass: HomeAssistant) -> None:
 
         with pytest.raises(ValueError):
             async_get_updater(hass, "incorrect")
+
+
+@pytest.mark.asyncio
+async def test_updater_static_endpoints_cached(hass: HomeAssistant) -> None:
+    """Config/schema/colors/scenes are fetched on STATIC_REFRESH_INTERVAL, not every poll.
+
+    :param hass: HomeAssistant
+    """
+
+    now = utcnow()
+
+    with patch("custom_components.ledfx.updater.LedFxClient") as mock_client, patch(
+        "custom_components.ledfx.updater.utcnow", side_effect=lambda: now
+    ):
+        await async_mock_client_2(mock_client)
+        client = mock_client.return_value
+
+        _, config_entry = await async_setup(hass)
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        updater: LedFxUpdater = hass.data[DOMAIN][config_entry.entry_id][UPDATER]
+        static = (client.config, client.schema, client.colors, client.scenes)
+
+        assert updater.last_update_success
+        assert [m.call_count for m in static] == [1, 1, 1, 1]
+        assert client.devices.call_count == 1
+        # /api/virtuals is reused from the devices step, not fetched twice.
+        assert client.virtuals.call_count == 1
+
+        async def poll() -> None:
+            async_fire_time_changed(
+                hass, utcnow() + timedelta(seconds=DEFAULT_SCAN_INTERVAL + 1)
+            )
+            await hass.async_block_till_done()
+
+        now += timedelta(seconds=DEFAULT_SCAN_INTERVAL + 1)
+        await poll()
+
+        assert updater.last_update_success
+        assert [m.call_count for m in static] == [1, 1, 1, 1]
+        assert client.devices.call_count == 2
+        assert client.virtuals.call_count == 2
+
+        now += timedelta(seconds=STATIC_REFRESH_INTERVAL)
+        await poll()
+
+        assert [m.call_count for m in static] == [2, 2, 2, 2]
+
+        updater.request_static_refresh()
+        await poll()
+
+        assert [m.call_count for m in static] == [3, 3, 3, 3]
