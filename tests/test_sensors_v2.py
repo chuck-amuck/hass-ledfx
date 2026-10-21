@@ -48,7 +48,10 @@ async def test_update_device_sensors_v2(hass: HomeAssistant) -> None:
     :param hass: HomeAssistant
     """
 
-    with patch("custom_components.ledfx.updater.LedFxClient") as mock_client:
+    # Legacy test: refetch config/scenes every poll, as before the static cache.
+    with patch(
+        "custom_components.ledfx.updater.STATIC_REFRESH_INTERVAL", 0
+    ), patch("custom_components.ledfx.updater.LedFxClient") as mock_client:
         await async_mock_client_2(mock_client)
 
         def success() -> dict:

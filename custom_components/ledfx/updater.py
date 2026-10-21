@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import cached_property
 from typing import Any, Final
 
@@ -57,6 +57,7 @@ from .const import (
     DOMAIN,
     MAINTAINER,
     NAME,
+    STATIC_REFRESH_INTERVAL,
     SIGNAL_NEW_BUTTON,
     SIGNAL_NEW_DEVICE,
     SIGNAL_NEW_NUMBER,
@@ -78,6 +79,10 @@ PREPARE_METHODS_V1: Final = (
     "audio_devices",
     "scenes",
 )
+
+# Only these change from moment to moment; the rest are fetched on
+# STATIC_REFRESH_INTERVAL (or after a failure / a settings change from HA).
+DYNAMIC_METHODS: Final = ("devices",)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -172,6 +177,27 @@ class LedFxUpdater(DataUpdateCoordinator):
 
         self._is_first_update: bool = True
 
+        self._static_refreshed_at: datetime | None = None
+        self._virtuals_response: dict | None = None
+
+    def request_static_refresh(self) -> None:
+        """Refetch config/schema/colors/scenes on the next update."""
+
+        self._static_refreshed_at = None
+
+    def _is_static_due(self) -> bool:
+        """Whether the slow-changing endpoints should be fetched this update.
+
+        :return bool
+        """
+
+        if self._static_refreshed_at is None:
+            return True
+
+        return utcnow() - self._static_refreshed_at >= timedelta(
+            seconds=STATIC_REFRESH_INTERVAL
+        )
+
     async def async_stop(self) -> None:
         """Stop updater"""
 
@@ -208,10 +234,18 @@ class LedFxUpdater(DataUpdateCoordinator):
 
         _err: LedFxError | None = None
 
+        is_static_due: bool = self._is_static_due()
+        self._virtuals_response = None
+
         try:
             for method in PREPARE_METHODS_V1:
-                if not self._is_only_check or method == "config":
-                    await self._async_prepare(method, self.data)
+                if self._is_only_check and method != "config":
+                    continue
+
+                if method not in DYNAMIC_METHODS and not is_static_due:
+                    continue
+
+                await self._async_prepare(method, self.data)
         except LedFxConnectionError as _e:
             _err = _e
 
@@ -224,9 +258,17 @@ class LedFxUpdater(DataUpdateCoordinator):
             if self._is_first_update:
                 self._is_first_update = False
 
+            if is_static_due:
+                self._static_refreshed_at = utcnow()
+
+        if not codes.is_success(self.code):
+            # LedFx may have restarted or been reconfigured; reload everything
+            # once it is reachable again.
+            self.request_static_refresh()
+
         self.data[ATTR_STATE] = codes.is_success(self.code)
 
-        v_response: dict = await self.client.virtuals()
+        v_response: dict = self._virtuals_response or await self.client.virtuals()
         self.data["paused"] = v_response["paused"]
 
         return self.data
@@ -625,6 +667,7 @@ class LedFxUpdater(DataUpdateCoordinator):
             return
 
         v_response: dict = await self.client.virtuals()
+        self._virtuals_response = v_response
 
         if "virtuals" in v_response and v_response["virtuals"]:
             devices: dict = {}
