@@ -226,6 +226,5 @@ def _generate_id(code: str, ip_address: str) -> str:
 
     return generate_entity_id(
         SENSOR_ENTITY_ID_FORMAT,
-        ip_address,
         code,
     )

@@ -113,20 +113,20 @@ def clean_flow_user_input(user_input: dict, supports_basic_auth: bool = False) -
     }
 
 
-def generate_entity_id(
-    entity_id_format: str, ip_address: str, name: str | None = None
-) -> str:
+def generate_entity_id(entity_id_format: str, name: str | None = None) -> str:
     """Generate Entity ID
 
+    The address is left out so IDs survive an address change. Home Assistant
+    adds a numeric suffix if a second LedFx instance suggests the same ID.
+
     :param entity_id_format: str: Format
-    :param ip_address: str: Ip address
     :param name: str | None: Name
     :return str: Entity ID
     """
 
     _name: str = f"_{name}" if name is not None else ""
 
-    return entity_id_format.format(slugify(f"ledfx_{ip_address}{_name}".lower()))
+    return entity_id_format.format(slugify(f"ledfx{_name}".lower()))
 
 
 def build_effects(

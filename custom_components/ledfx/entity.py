@@ -55,7 +55,6 @@ class LedFxEntity(CoordinatorEntity):
 
         self.entity_id = generate_entity_id(
             entity_id_format,
-            updater.ip,
             description.key,
         )
 

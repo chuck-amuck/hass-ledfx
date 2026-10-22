@@ -146,7 +146,6 @@ class LedFxSelect(LedFxEntity, SelectEntity):
 
             self.entity_id = generate_entity_id(
                 ENTITY_ID_FORMAT,
-                updater.ip,
                 f"{entity.device_code}_{entity.description.key}",
             )
 
@@ -186,7 +185,6 @@ class LedFxSelect(LedFxEntity, SelectEntity):
 
             self.entity_id = generate_entity_id(
                 ENTITY_ID_FORMAT,
-                updater.ip,
                 f"{entity.device_code}_{entity.description.key}",
             )
 
