@@ -15,8 +15,9 @@ from homeassistant.const import (
     CONF_TIMEOUT,
     CONF_USERNAME,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 from httpx import codes
 
@@ -27,7 +28,7 @@ from .const import (
     DOMAIN,
     OPTION_IS_FROM_FLOW,
 )
-from .helper import async_verify_access, clean_flow_user_input
+from .helper import async_verify_access, clean_flow_user_input, get_config_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -137,6 +138,109 @@ class LedFxConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: ConfigType | None = None
+    ) -> FlowResult:
+        """Handle changing the address of an existing entry.
+
+        Entity unique IDs are based on the entry ID, so entities and their
+        entity IDs are kept when the address changes.
+
+        :param user_input: ConfigType | None: User data
+        :return FlowResult: Result object
+        """
+
+        entry: config_entries.ConfigEntry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            ip_address: str = user_input[CONF_IP_ADDRESS].strip()
+            port: str = str(user_input[CONF_PORT]).strip()
+            unique_id: str = f"{ip_address}:{port}"
+
+            for other in self._async_current_entries(include_ignore=False):
+                if other.entry_id != entry.entry_id and other.unique_id == unique_id:
+                    return self.async_abort(reason="already_configured")
+
+            code: codes = await async_verify_access(
+                self.hass,
+                ip_address,
+                port,
+                get_config_value(entry, CONF_USERNAME),
+                get_config_value(entry, CONF_PASSWORD),
+                get_config_value(entry, CONF_TIMEOUT, DEFAULT_TIMEOUT),
+            )
+
+            _LOGGER.debug("Verify access code: %s", code)
+
+            if codes.is_success(code):
+                async_move_service_device(self.hass, entry, unique_id)
+
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=unique_id,
+                    title=unique_id,
+                    data_updates={CONF_IP_ADDRESS: ip_address, CONF_PORT: port},
+                    # Options saved by the options flow take precedence over data.
+                    options={
+                        key: value
+                        for key, value in entry.options.items()
+                        if key not in (CONF_IP_ADDRESS, CONF_PORT)
+                    },
+                )
+
+            if code == codes.FORBIDDEN:
+                errors["base"] = "request.error"
+            else:
+                errors["base"] = "connection.error"
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_IP_ADDRESS,
+                        default=get_config_value(entry, CONF_IP_ADDRESS),
+                    ): str,
+                    vol.Required(
+                        CONF_PORT, default=str(get_config_value(entry, CONF_PORT))
+                    ): str,
+                }
+            ),
+            errors=errors,
+        )
+
+
+@callback
+def async_move_service_device(
+    hass: HomeAssistant, entry: config_entries.ConfigEntry, address: str
+) -> None:
+    """Point the LedFx service device at a new address, keeping its area and name.
+
+    :param hass: HomeAssistant: Home Assistant object
+    :param entry: config_entries.ConfigEntry: Config Entry object
+    :param address: str: New address (ip:port)
+    """
+
+    old_address: str = (
+        f"{get_config_value(entry, CONF_IP_ADDRESS)}:{get_config_value(entry, CONF_PORT)}"
+    )
+
+    if old_address == address:
+        return
+
+    registry = dr.async_get(hass)
+
+    if registry.async_get_device(identifiers={(DOMAIN, address)}) is not None:
+        return
+
+    if device := registry.async_get_device(identifiers={(DOMAIN, old_address)}):
+        registry.async_update_device(
+            device.id,
+            new_identifiers={(DOMAIN, address)},
+            configuration_url=f"http://{address}/",
         )
 
 

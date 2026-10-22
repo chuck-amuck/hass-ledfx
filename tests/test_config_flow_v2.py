@@ -20,6 +20,8 @@ from homeassistant.const import (
     CONF_USERNAME,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry, load_fixture
 
 from custom_components.ledfx.const import (
@@ -540,3 +542,126 @@ async def test_options_flow_connection_error(hass: HomeAssistant) -> None:
     assert result_save["step_id"] == "init"
     assert result_save["errors"]["base"] == "connection.error"
     assert len(mock_async_setup_entry.mock_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconfigure(hass: HomeAssistant) -> None:
+    """Test reconfigure keeps entities and moves the service device.
+
+    :param hass: HomeAssistant
+    """
+
+    old_address: str = f"{MOCK_IP_ADDRESS}:{MOCK_PORT}"
+    new_ip: str = "192.168.20.167"
+    new_address: str = f"{new_ip}:{MOCK_PORT}"
+
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=old_address,
+        title=old_address,
+        data=OPTIONS_FLOW_DATA,
+        options={CONF_IP_ADDRESS: MOCK_IP_ADDRESS, CONF_TIMEOUT: 15},
+    )
+    config_entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, old_address)},
+    )
+
+    await setup.async_setup_component(hass, "http", {})
+
+    with patch(
+        "custom_components.ledfx.async_setup_entry",
+        return_value=True,
+    ), patch("custom_components.ledfx.updater.LedFxClient") as mock_client:
+        mock_client.return_value.config = AsyncMock(
+            return_value=json.loads(load_fixture("config_v2_data.json"))
+        )
+
+        result_init = await config_entry.start_reconfigure_flow(hass)
+
+        assert result_init["type"] == FlowResultType.FORM
+        assert result_init["step_id"] == "reconfigure"
+
+        result_save = await hass.config_entries.flow.async_configure(
+            result_init["flow_id"],
+            {CONF_IP_ADDRESS: new_ip, CONF_PORT: MOCK_PORT},
+        )
+        await hass.async_block_till_done()
+
+    assert result_save["type"] == FlowResultType.ABORT
+    assert result_save["reason"] == "reconfigure_successful"
+    assert config_entry.unique_id == new_address
+    assert config_entry.title == new_address
+    assert config_entry.data[CONF_IP_ADDRESS] == new_ip
+    assert CONF_IP_ADDRESS not in config_entry.options
+    assert config_entry.options[CONF_TIMEOUT] == 15
+
+    moved = device_registry.async_get(device.id)
+    assert moved is not None
+    assert moved.identifiers == {(DOMAIN, new_address)}
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_connection_error(hass: HomeAssistant) -> None:
+    """Test reconfigure keeps the entry when the new address is unreachable.
+
+    :param hass: HomeAssistant
+    """
+
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=f"{MOCK_IP_ADDRESS}:{MOCK_PORT}",
+        data=OPTIONS_FLOW_DATA,
+        options={},
+    )
+    config_entry.add_to_hass(hass)
+
+    await setup.async_setup_component(hass, "http", {})
+
+    with patch("custom_components.ledfx.updater.LedFxClient") as mock_client:
+        mock_client.return_value.config = AsyncMock(side_effect=LedFxConnectionError)
+
+        result_init = await config_entry.start_reconfigure_flow(hass)
+        result_save = await hass.config_entries.flow.async_configure(
+            result_init["flow_id"],
+            {CONF_IP_ADDRESS: "192.168.20.167", CONF_PORT: MOCK_PORT},
+        )
+
+    assert result_save["type"] == FlowResultType.FORM
+    assert result_save["step_id"] == "reconfigure"
+    assert result_save["errors"]["base"] == "connection.error"
+    assert config_entry.data[CONF_IP_ADDRESS] == MOCK_IP_ADDRESS
+
+
+@pytest.mark.asyncio
+async def test_reconfigure_already_configured(hass: HomeAssistant) -> None:
+    """Test reconfigure aborts when another entry uses the new address.
+
+    :param hass: HomeAssistant
+    """
+
+    other_address: str = f"192.168.20.167:{MOCK_PORT}"
+
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=f"{MOCK_IP_ADDRESS}:{MOCK_PORT}",
+        data=OPTIONS_FLOW_DATA,
+        options={},
+    )
+    config_entry.add_to_hass(hass)
+    MockConfigEntry(domain=DOMAIN, unique_id=other_address).add_to_hass(hass)
+
+    await setup.async_setup_component(hass, "http", {})
+
+    result_init = await config_entry.start_reconfigure_flow(hass)
+    result_save = await hass.config_entries.flow.async_configure(
+        result_init["flow_id"],
+        {CONF_IP_ADDRESS: "192.168.20.167", CONF_PORT: MOCK_PORT},
+    )
+
+    assert result_save["type"] == FlowResultType.ABORT
+    assert result_save["reason"] == "already_configured"
+    assert config_entry.data[CONF_IP_ADDRESS] == MOCK_IP_ADDRESS
