@@ -17,7 +17,19 @@
           "scan_interval": "Scan interval in seconds [PRO]",
           "timeout": "Timeout of requests in seconds [PRO]"
         }
+      },
+      "reconfigure": {
+        "title": "LedFx address",
+        "description": "Change the IP address and port of your LedFx. Entities and their IDs are kept.",
+        "data": {
+          "ip_address": "[%key:common::config_flow::data::ip_address%]",
+          "port": "[%key:common::config_flow::data::port%]"
+        }
       }
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
     }
   },
   "options": {
