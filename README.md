@@ -5,6 +5,22 @@
 
 Component for deep integration [LedFx](https://github.com/LedFx/LedFx) from [Home Assistant](https://www.home-assistant.io/).
 
+## About this fork
+
+This is a fork of [Anto79-ops/hass-ledfx](https://github.com/Anto79-ops/hass-ledfx) with fixes for LedFx 2.x,
+made and tested against LedFx 2.1.9. The changes live on the `ledfx-2.1.9-fixes` branch (`main` mirrors
+upstream) and ship as `2.1.9-fixes.N` releases: add `https://github.com/chuck-amuck/hass-ledfx` to HACS as a
+custom integration repository to install them.
+
+- Presets are sent with the category LedFx 2.x expects (`ledfx_presets` / `user_presets`), and effect-config
+  entities are generated from the 2.x schema.
+- Free-text effect parameters get `text` entities; number steps are 1 for integers and 0.01 otherwise.
+- Each device gets a preset select and an Effect select, grouped by category with display names (also on the
+  light card), plus a Default preset reset.
+- Config, schema, colours and scenes are refreshed every 10 minutes instead of on every scan.
+- A Reconfigure option changes the LedFx address without removing the integration.
+- New entity IDs no longer include the LedFx IP address; existing entities keep theirs.
+
 ## Requirements
 * LedFx version >= [0.10.7](https://github.com/LedFx/LedFx/releases/tag/v0.10.7)
 
