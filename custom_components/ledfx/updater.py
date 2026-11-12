@@ -268,8 +268,24 @@ class LedFxUpdater(DataUpdateCoordinator):
 
         self.data[ATTR_STATE] = codes.is_success(self.code)
 
-        v_response: dict = self._virtuals_response or await self.client.virtuals()
-        self.data["paused"] = v_response["paused"]
+        if self.data[ATTR_STATE]:
+            # The play/pause state comes from the virtuals list. Ask for it only
+            # while LedFx answers: when it doesn't, this call fails too, and the
+            # error must not escape the update.
+            try:
+                v_response: dict = (
+                    self._virtuals_response or await self.client.virtuals()
+                )
+            except LedFxError as _e:
+                self.code = (
+                    codes.NOT_FOUND
+                    if isinstance(_e, LedFxConnectionError)
+                    else codes.FORBIDDEN
+                )
+                self.data[ATTR_STATE] = False
+                self.request_static_refresh()
+            else:
+                self.data["paused"] = v_response["paused"]
 
         return self.data
 

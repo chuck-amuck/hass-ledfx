@@ -30,7 +30,10 @@ from custom_components.ledfx.const import (
     DOMAIN,
     UPDATER,
 )
-from custom_components.ledfx.exceptions import LedFxRequestError
+from custom_components.ledfx.exceptions import (
+    LedFxConnectionError,
+    LedFxRequestError,
+)
 from custom_components.ledfx.helper import generate_entity_id
 from custom_components.ledfx.updater import LedFxUpdater
 from tests.setup import MultipleSideEffect, async_mock_client, async_setup
@@ -124,6 +127,80 @@ async def test_update_state(hass: HomeAssistant) -> None:
         state = hass.states.get(unique_id)
         assert state.state == STATE_OFF
         assert state.attributes["icon"] == "mdi:lan-disconnect"
+
+
+@pytest.mark.asyncio
+async def test_update_state_ledfx_unreachable(hass: HomeAssistant) -> None:
+    """LedFx going away turns the state off instead of failing the update.
+
+    Every request, the virtuals list included, fails while LedFx is down. The
+    update has to finish, report LedFx as off, and recover once it answers.
+
+    :param hass: HomeAssistant
+    """
+
+    with patch("custom_components.ledfx.updater.LedFxClient") as mock_client, patch(
+        "custom_components.ledfx.updater.async_dispatcher_send"
+    ):
+        await async_mock_client(mock_client)
+
+        down: dict[str, bool] = {"value": False}
+
+        def reachable(method: str):
+            answer = getattr(mock_client.return_value, method).return_value
+
+            async def call(*args, **kwargs):
+                if down["value"]:
+                    raise LedFxConnectionError
+                return answer
+
+            return call
+
+        mock_client.return_value.virtuals = AsyncMock(
+            return_value=json.loads(load_fixture("virtuals_data.json"))
+        )
+        for method in (
+            "config",
+            "schema",
+            "audio_devices",
+            "scenes",
+            "devices",
+            "info",
+            "virtuals",
+        ):
+            setattr(
+                mock_client.return_value,
+                method,
+                AsyncMock(side_effect=reachable(method)),
+            )
+
+        _, config_entry = await async_setup(hass)
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        updater: LedFxUpdater = hass.data[DOMAIN][config_entry.entry_id][UPDATER]
+        unique_id: str = _generate_id(ATTR_STATE_NAME, updater.ip)
+
+        assert hass.states.get(unique_id).state == STATE_ON
+
+        down["value"] = True
+        async_fire_time_changed(
+            hass, utcnow() + timedelta(seconds=DEFAULT_SCAN_INTERVAL + 1)
+        )
+        await hass.async_block_till_done()
+
+        assert updater.last_update_success
+        assert hass.states.get(unique_id).state == STATE_OFF
+
+        down["value"] = False
+        async_fire_time_changed(
+            hass, utcnow() + timedelta(seconds=2 * (DEFAULT_SCAN_INTERVAL + 1))
+        )
+        await hass.async_block_till_done()
+
+        assert updater.last_update_success
+        assert hass.states.get(unique_id).state == STATE_ON
 
 
 def _generate_id(code: str, ip_address: str) -> str:
